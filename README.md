@@ -55,8 +55,7 @@ sha256 digest published by GitHub and deleted afterwards. This repository contai
    plugged in – and connect the headset to the adapter. `make status` should show the headset on
    USB (5000 Mbit/s) and the headset display on a GPU output.
 5. Start SteamVR. Headset and Sense controllers should turn green.
-6. Set up your play area for 6DoF tracking with the Linux release of
-   [PSVR2Toolkit.UnitySetup](https://github.com/BnuuySolutions/PSVR2Toolkit.UnitySetup).
+6. Set up your play area for 6DoF tracking: `make playarea` (see [Play area](#play-area)).
 
 Optional: with SteamVR closed, `make steamvr-settings` enables `enableLinuxVulkanAsync` and
 `useFacetRenderer` in `steamvr.vrsettings` (as recommended by the guide; a backup is created).
@@ -74,6 +73,28 @@ Optional: with SteamVR closed, `make steamvr-settings` enables `enableLinuxVulka
 | `register`    | `driver_install.sh` → adds the driver to `~/.config/openvr/openvrpaths.vrpath` |
 
 Every step can also be run on its own, e.g. `make psvr2tk`. `make help` lists all targets.
+
+## Play area
+
+Without the PlayStation VR2 App, the play area is set up with
+[PSVR2Toolkit.UnitySetup](https://github.com/BnuuySolutions/PSVR2Toolkit.UnitySetup), a native
+Linux OpenVR app that talks to the PSVR2 driver directly. SteamVR's own room setup does not
+apply – the driver keeps its play area in `~/.steam/steam/config/playstation_vr2/`.
+
+```bash
+make playarea
+```
+
+downloads the tool to `~/.local/share/PSVR2Toolkit.UnitySetup` (or updates it) and starts it.
+SteamVR must be running with the headset shown green. In the headset you see your room through
+the cameras:
+
+1. **Look at your surroundings** until the map score is good – this builds the tracking map.
+2. **Draw the play area** on the floor with the controllers (add, subtract, move points).
+3. **Save** – the button is only enabled once tracking works.
+
+The tool also calibrates eye tracking and helps with lens adjustment. If tracking gets worse
+later, use *Refine map* or *Clear SLAM map* – both keep the drawn play area.
 
 ## Checking your setup
 
@@ -98,6 +119,7 @@ loaded the driver through Ignition (including safe-mode and USB errors).
 | SteamVR crashed and restarted in safe mode | Close SteamVR, wait ~10 seconds, start it again. If `make status` reports the driver as disabled, run `make unblock-driver` with SteamVR closed. |
 | PlayStation VR2 is not listed under *Manage Add-ons* | Expected – the driver is registered through Ignition, not as a regular add-on. Use `make status` to check it. |
 | `make status`: *did not load the PSVR2 driver through Ignition* | Run `make status` and fix any warnings in the installation section; check `~/.steam/steam/logs/vrserver.txt`. |
+| No positional tracking, only rotation | No play area set up yet – `make playarea`. |
 | `make check`: *must be in the main library* | Move the app in Steam: Properties → Installed Files → Move install folder. |
 | Left controller not working | xr-hardware rules from a distro package are outdated – `make xr-hardware`, then reconnect. |
 | Controllers not showing up | Disable *Gamepad Support* in SteamVR → Settings → Startup/Shutdown → Manage Add-ons; reconnect the controllers. |
@@ -117,17 +139,18 @@ Known limitations of Ignition (Room View, Sony apps, controller poll rate) are l
 - **Steam updated the PlayStation VR2 App:** `make status` reports changed toolkit files →
   `make reapply`. The new Sony DLL is kept as the new original.
 - **New Ignition / PSVR2Toolkit release:** run `make install` again (or just `make ignition` /
-  `make psvr2tk`).
+  `make psvr2tk`). `make playarea` updates the play area tool by itself.
 - **Specific version:** `make install IGNITION_VERSION=v1.1.0 PSVR2TK_VERSION=v1.0.0-experimental-2`
 
 ## Uninstalling
 
 ```bash
-make uninstall       # unregister driver, remove toolkit + shim + /opt/ignition, restore Sony's DLL
+make uninstall       # unregister driver, remove toolkit + shim + /opt/ignition + play area tool,
+                     # restore Sony's DLL
 make uninstall-all   # additionally remove the udev rules and the Vulkan layer
 ```
 
-The Proton prefix used by Ignition (`~/.proton`) is left in place.
+The Proton prefix used by Ignition (`~/.proton`) and your saved play area are left in place.
 
 ## Differences from the upstream guide
 
@@ -143,15 +166,16 @@ All variables can be overridden on the command line:
 
 | Variable | Default |
 |----------|---------|
-| `IGNITION_VERSION`, `PSVR2TK_VERSION`, `SVLF_VERSION` | `latest` |
+| `IGNITION_VERSION`, `PSVR2TK_VERSION`, `SVLF_VERSION`, `PLAYAREA_VERSION` | `latest` |
 | `IGNITION_DIR` | `/opt/ignition` (must be reachable from the Steam Linux Runtime) |
 | `STEAM_DIR` | `~/.steam/steam`, or `~/.local/share/Steam` |
 | `PLUGIN_DIR` | `$STEAM_DIR/steamapps/common/PlayStation VR2 App/SteamVR_Plug-In` |
+| `PLAYAREA_DIR` | `~/.local/share/PSVR2Toolkit.UnitySetup` |
 | `PROTON_VERSION` | `Proton - Experimental` |
 | `SUDO` | `sudo` |
 
 ## License
 
 [MIT](LICENSE). This repository only contains the installer; Ignition, PSVR2Toolkit,
-SteamVRLinuxFixes and xr-hardware are downloaded from their projects and are covered by
+PSVR2Toolkit.UnitySetup, SteamVRLinuxFixes and xr-hardware are downloaded from their projects and are covered by
 their own licenses.

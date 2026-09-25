@@ -15,6 +15,7 @@ SHELL       := /bin/bash
 IGNITION_VERSION ?= latest
 PSVR2TK_VERSION  ?= latest
 SVLF_VERSION     ?= latest
+PLAYAREA_VERSION ?= latest
 
 # --- Paths ----------------------------------------------------------------------
 IGNITION_DIR ?= /opt/ignition
@@ -24,6 +25,7 @@ VRPATHS      ?= $(HOME)/.config/openvr/openvrpaths.vrpath
 VRSETTINGS   ?= $(STEAM_DIR)/config/steamvr.vrsettings
 VRLOGS       ?= $(STEAM_DIR)/logs
 UDEV_RULE    ?= /etc/udev/rules.d/70-xrhardware.rules
+PLAYAREA_DIR ?= $(HOME)/.local/share/PSVR2Toolkit.UnitySetup
 VK_LAYER     := /usr/share/vulkan/implicit_layer.d/VkLayer_steamvr_linux_fixes.json
 VK_LAYER_LIB := /usr/lib/libsteamvr_linux_fixes.so
 
@@ -58,6 +60,7 @@ PSVR2 Linux Companion – Ignition + PSVR2Toolkit for PlayStation VR2 on Linux
   make install          Install everything: xr-hardware linux-fixes ignition
                         driver psvr2tk register
   make status           Show installation state, headset connection and last SteamVR run
+  make playarea         Set up play area, eye tracking, lenses (PSVR2Toolkit.UnitySetup)
   make reapply          After Steam updated the PlayStation VR2 App: driver + psvr2tk again
   make steamvr-settings Set recommended options in steamvr.vrsettings
   make unblock-driver   Re-enable the PSVR2 driver if SteamVR disabled it after a crash
@@ -70,19 +73,20 @@ PSVR2 Linux Companion – Ignition + PSVR2Toolkit for PlayStation VR2 on Linux
     psvr2tk       PSVR2Toolkit to bin/win64 (original -> *_orig.dll)
     register      Run driver_install.sh (register the driver with SteamVR)
 
-  make uninstall        Unregister, remove toolkit/shim/Ignition, restore original DLL
+  make uninstall        Unregister, remove toolkit/shim/Ignition/play area tool, restore DLL
   make uninstall-all    Additionally remove udev rules and Vulkan layer
 
-Variables: IGNITION_VERSION PSVR2TK_VERSION SVLF_VERSION (default: latest),
-IGNITION_DIR STEAM_DIR PLUGIN_DIR PROTON_VERSION SUDO
+Variables: IGNITION_VERSION PSVR2TK_VERSION SVLF_VERSION PLAYAREA_VERSION (default: latest),
+IGNITION_DIR STEAM_DIR PLUGIN_DIR PLAYAREA_DIR PROTON_VERSION SUDO
 Example:   make install IGNITION_VERSION=v1.1.0
 endef
 export HELP
 
 .PHONY: help check versions install reapply status \
         xr-hardware linux-fixes ignition driver psvr2tk register steamvr-settings unblock-driver \
+        playarea playarea-install \
         uninstall uninstall-all unregister uninstall-psvr2tk uninstall-driver \
-        uninstall-ignition uninstall-xr-hardware uninstall-linux-fixes
+        uninstall-ignition uninstall-playarea uninstall-xr-hardware uninstall-linux-fixes
 
 help:
 	@printf '%s\n' "$$HELP"
@@ -116,10 +120,11 @@ check:
 
 versions:
 	@$(LIB)
-	show() { local rel; rel=$$(resolve_release "$$1" "$$2" "$$3" "$${4:-no}"); printf '%-18s %s\n' "$$1" "$$(jq -r .tag_name <<<"$$rel")"; }
+	show() { local rel; rel=$$(resolve_release "$$1" "$$2" "$$3" "$${4:-no}"); printf '%-25s %s\n' "$$1" "$$(jq -r .tag_name <<<"$$rel")"; }
 	show Ignition          "$(IGNITION_VERSION)" Ignition-Linux-Windows.zip
 	show PSVR2Toolkit      "$(PSVR2TK_VERSION)"  PSVR2TK-win64-Ignition.zip yes
 	show SteamVRLinuxFixes "$(SVLF_VERSION)"     VK_LAYER_BNUUY_steamvr_linux_fixes.zip
+	show PSVR2Toolkit.UnitySetup "$(PLAYAREA_VERSION)" PSVR2Toolkit.UnitySetup-Linux.zip
 
 # --- Installation -------------------------------------------------------------------
 
@@ -128,7 +133,7 @@ install: check xr-hardware linux-fixes ignition driver psvr2tk register
 	step "Done"
 	echo "Start SteamVR (not the PlayStation VR2 App – it does not run on Linux)."
 	echo "Headset and Sense controllers should show up green. If not: make status"
-	echo "For 6DoF tracking, run the Linux release of PSVR2Toolkit.UnitySetup once."
+	echo "For 6DoF tracking, set up your play area once: make playarea"
 	echo "Optional: make steamvr-settings"
 
 reapply: driver psvr2tk
@@ -209,6 +214,48 @@ psvr2tk:
 	echo "$$tag" > .psvr2tk-version
 	ok "PSVR2Toolkit $$tag installed ($$(wc -l < .psvr2tk-manifest) files)"
 
+# --- Play area (PSVR2Toolkit.UnitySetup) ---------------------------------------------
+# Replaces the PlayStation VR2 App's room setup: play area, eye tracking calibration,
+# lens adjustment. Runs as a native Linux OpenVR app while SteamVR is running.
+
+PLAYAREA_ZIP := PSVR2Toolkit.UnitySetup-Linux.zip
+PLAYAREA_BIN := PSVR2Toolkit.UnitySetup.x86_64
+
+playarea: playarea-install
+	@. "$(CURDIR)/lib.sh"
+	step "Play area setup"
+	pgrep -x vrserver >/dev/null || die "SteamVR is not running – start it and wait until the headset is green"
+	echo "Put on the headset. Look around until the map score is good, draw the play area,"
+	echo "then press Save. Quit the tool from its menu to return here."
+	echo "Log: $(PLAYAREA_DIR)/run.log"
+	cd "$(PLAYAREA_DIR)"
+	./$(PLAYAREA_BIN) > run.log 2>&1
+
+# Installs or updates the tool; keeps the installed version if GitHub is unreachable
+playarea-install:
+	@$(LIB)
+	case "$(PLAYAREA_DIR)" in ""|/|"$(HOME)"|"$(HOME)/.local"|"$(HOME)/.local/share") die "PLAYAREA_DIR='$(PLAYAREA_DIR)' is not allowed";; esac
+	installed=$$(cat "$(PLAYAREA_DIR)/VERSION" 2>/dev/null || true)
+	wanted=$$(resolve_release PSVR2Toolkit.UnitySetup "$(PLAYAREA_VERSION)" $(PLAYAREA_ZIP) 2>/dev/null | jq -r .tag_name) || wanted=
+	if [ -z "$$wanted" ]; then
+	  [ -n "$$installed" ] || die "Could not resolve PSVR2Toolkit.UnitySetup '$(PLAYAREA_VERSION)' on GitHub"
+	  warn "Could not resolve PSVR2Toolkit.UnitySetup '$(PLAYAREA_VERSION)' on GitHub (offline?) – using installed $$installed"
+	  exit 0
+	fi
+	if [ "$$installed" = "$$wanted" ] && [ -x "$(PLAYAREA_DIR)/$(PLAYAREA_BIN)" ]; then
+	  ok "PSVR2Toolkit.UnitySetup $$installed is up to date"
+	  exit 0
+	fi
+	step "PSVR2Toolkit.UnitySetup $$wanted to $(PLAYAREA_DIR)"
+	fetch_release PSVR2Toolkit.UnitySetup "$$wanted" $(PLAYAREA_ZIP) "$$tmp" >/dev/null
+	unzip -q "$$tmp/$(PLAYAREA_ZIP)" -d "$$tmp/app"
+	chmod +x "$$tmp/app/$(PLAYAREA_BIN)"
+	echo "$$wanted" > "$$tmp/app/VERSION"
+	rm -rf "$(PLAYAREA_DIR)"
+	mkdir -p "$$(dirname "$(PLAYAREA_DIR)")"
+	mv "$$tmp/app" "$(PLAYAREA_DIR)"
+	ok "PSVR2Toolkit.UnitySetup $$wanted installed"
+
 # Remove SteamVR's "disabled"/"blocked by safe mode" flags for the PSVR2 driver
 unblock-driver:
 	@. "$(CURDIR)/lib.sh"
@@ -251,6 +298,8 @@ status:
 	[ -f "$(UDEV_RULE)" ] && ok "xr-hardware udev rules" || warn "xr-hardware udev rules missing (make xr-hardware)"
 	[ -f "$(VK_LAYER)" ] && ok "SteamVRLinuxFixes" || warn "SteamVRLinuxFixes missing (make linux-fixes)"
 	[ -f "$(VRSETTINGS)" ] && ok "SteamVR has been started before" || warn "SteamVR has never been started"
+	if [ -f "$(PLAYAREA_DIR)/VERSION" ]; then ok "PSVR2Toolkit.UnitySetup $$(cat "$(PLAYAREA_DIR)/VERSION") (make playarea)"
+	else warn "PSVR2Toolkit.UnitySetup not installed – run make playarea to set up the play area"; fi
 	step "Headset"
 	check_headset_usb
 	check_headset_display
@@ -260,7 +309,7 @@ status:
 
 # --- Uninstall -------------------------------------------------------------------------
 
-uninstall: unregister uninstall-psvr2tk uninstall-driver uninstall-ignition
+uninstall: unregister uninstall-psvr2tk uninstall-driver uninstall-ignition uninstall-playarea
 
 uninstall-all: uninstall uninstall-xr-hardware uninstall-linux-fixes
 
@@ -303,6 +352,13 @@ uninstall-ignition:
 	[ -f "$(IGNITION_DIR)/install_ignition.sh" ] || { warn "not present"; exit 0; }
 	$(SUDO) rm -rf "$(IGNITION_DIR)"
 	ok "removed"
+
+uninstall-playarea:
+	@. "$(CURDIR)/lib.sh"
+	step "Remove $(PLAYAREA_DIR)"
+	[ -f "$(PLAYAREA_DIR)/$(PLAYAREA_BIN)" ] || { warn "not present"; exit 0; }
+	rm -rf "$(PLAYAREA_DIR)"
+	ok "removed (your saved play area is kept in SteamVR's config)"
 
 uninstall-xr-hardware:
 	@. "$(CURDIR)/lib.sh"
