@@ -51,7 +51,22 @@ sha256 digest published by GitHub and deleted afterwards. This repository contai
   - [SteamVR](https://store.steampowered.com/app/250820/SteamVR/) (stable, not beta)
   - [PlayStation VR2 App](https://store.steampowered.com/app/2580190/PlayStationVR2_App/)
   - Proton Experimental (Library → Tools)
-- `curl`, `unzip`, `jq` – e.g. `sudo apt install curl unzip jq`
+
+**System**
+- A Linux distribution with systemd (for `udevadm`) and `sudo`
+- GNU `make`, `bash` 4.4 or newer and the usual GNU tools (`grep`, `sed`, `awk`, coreutils)
+- `git`, `curl`, `unzip`, `jq`:
+
+  ```bash
+  sudo apt install make git curl unzip jq      # Debian, Ubuntu, Mint, KDE neon
+  sudo dnf install make git curl unzip jq      # Fedora
+  sudo pacman -S make git curl unzip jq        # Arch, CachyOS
+  ```
+
+Tested on KDE neon (based on Ubuntu 24.04) with KDE Plasma 6 on Wayland and an AMD GPU (Mesa).
+Other distributions should work as long as they meet the requirements above; immutable
+distributions (Bazzite, Fedora Silverblue, …) are not supported by this installer, as it writes
+to `/usr`.
 
 > **Note:** You never launch the PlayStation VR2 App itself – Sony's apps do not run on Linux.
 > It is only installed because it contains the SteamVR driver that Ignition loads.

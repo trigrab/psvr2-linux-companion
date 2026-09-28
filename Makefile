@@ -110,10 +110,12 @@ help:
 check:
 	@$(LIB)
 	step "Prerequisites"
-	for c in curl unzip jq sha256sum; do
-	  command -v $$c >/dev/null || die "'$$c' is missing (e.g. sudo apt install $$c)"
+	for c in curl unzip jq sha256sum udevadm pgrep $(SUDO); do
+	  command -v $$c >/dev/null || die "'$$c' is missing – see Requirements in README.md"
 	done
-	ok "curl, unzip, jq, sha256sum found"
+	(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )) || die "bash 4.4 or newer required"
+	echo x | grep -qP 'x' 2>/dev/null || die "GNU grep with -P support required"
+	ok "Required tools found"
 	[ -d "$(STEAM_DIR)/steamapps" ] || die "Steam not found at $(STEAM_DIR) (set STEAM_DIR=...)"
 	ok "Steam: $$(readlink -f "$(STEAM_DIR)")"
 	[ -d "$(HOME)/.var/app/com.valvesoftware.Steam" ] && warn "Flatpak Steam found – it is not supported, use the native Steam package"
