@@ -2,6 +2,23 @@
 
 Installer and helpers for running PlayStation VR2 on Linux with Ignition and PSVR2Toolkit.
 
+> [!IMPORTANT]
+> This is an unofficial personal project: a few convenience scripts I wrote for my own setup and
+> share as they are. I am not affiliated with Bnuuy Solutions or the authors of Ignition,
+> PSVR2Toolkit, PSVR2Toolkit.UnitySetup, SteamVRLinuxFixes, vr2jb, PSVR2Updater or xr-hardware.
+> Problems with those tools belong in their projects; problems with this installer belong here.
+>
+> The installer is provided "as is", without warranty of any kind, and I accept no liability for
+> any damage to your system or hardware – see the [license](LICENSE). It modifies system files
+> (`/opt`, `/etc/udev`, `/usr`) and your SteamVR configuration. The terms of the installed tools
+> apply as well; PSVR2Toolkit, for example, is for non-commercial use only.
+
+> [!NOTE]
+> This project is not affiliated with, endorsed by or sponsored by Sony Interactive Entertainment
+> or Valve. Sony, Sony Interactive Entertainment and PS VR2/PlayStation VR2 are trademarks or
+> registered trademarks of Sony Interactive Entertainment LLC in the United States of America and
+> elsewhere. Steam and SteamVR are trademarks or registered trademarks of Valve Corporation.
+
 A Makefile that automates the
 [PSVR2Toolkit Linux guide](https://github.com/BnuuySolutions/PSVR2Toolkit/wiki/Linux-support):
 it installs [Ignition](https://github.com/BnuuySolutions/Ignition) (runs the Windows PSVR2
