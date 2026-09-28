@@ -16,6 +16,8 @@ IGNITION_VERSION ?= latest
 PSVR2TK_VERSION  ?= latest
 SVLF_VERSION     ?= latest
 PLAYAREA_VERSION ?= latest
+VR2JB_VERSION    ?= latest
+UPDATER_VERSION  ?= latest
 
 # --- Paths ----------------------------------------------------------------------
 IGNITION_DIR ?= /opt/ignition
@@ -26,6 +28,8 @@ VRSETTINGS   ?= $(STEAM_DIR)/config/steamvr.vrsettings
 VRLOGS       ?= $(STEAM_DIR)/logs
 UDEV_RULE    ?= /etc/udev/rules.d/70-xrhardware.rules
 PLAYAREA_DIR ?= $(HOME)/.local/share/PSVR2Toolkit.UnitySetup
+VR2JB_DIR    ?= $(HOME)/.local/share/vr2jb
+UPDATER_DIR  ?= $(HOME)/.local/share/PSVR2Updater
 VK_LAYER     := /usr/share/vulkan/implicit_layer.d/VkLayer_steamvr_linux_fixes.json
 VK_LAYER_LIB := /usr/lib/libsteamvr_linux_fixes.so
 
@@ -65,6 +69,12 @@ PSVR2 Linux Companion – Ignition + PSVR2Toolkit for PlayStation VR2 on Linux
   make steamvr-settings Set recommended options in steamvr.vrsettings
   make unblock-driver   Re-enable the PSVR2 driver if SteamVR disabled it after a crash
 
+  Optional – jailbreak (vibration, eye tracking camera; firmware 6.00 only, can brick):
+    firmware            Show headset firmware and what to do for the jailbreak
+    firmware-recovery   Enter recovery mode to downgrade (vr2jb downgrade)
+    firmware-flash      Flash a firmware file: make firmware-flash FIRMWARE=file.CUP
+    jailbreak           Run vr2jb – after every headset power-on, before SteamVR
+
   Individual steps:
     xr-hardware   udev rules to $(UDEV_RULE)   (sudo)
     linux-fixes   SteamVRLinuxFixes Vulkan layer to /usr          (sudo)
@@ -73,20 +83,23 @@ PSVR2 Linux Companion – Ignition + PSVR2Toolkit for PlayStation VR2 on Linux
     psvr2tk       PSVR2Toolkit to bin/win64 (original -> *_orig.dll)
     register      Run driver_install.sh (register the driver with SteamVR)
 
-  make uninstall        Unregister, remove toolkit/shim/Ignition/play area tool, restore DLL
+  make uninstall        Unregister, remove toolkit/shim/Ignition and the tools in ~/.local/share,
+                        restore Sony's DLL
   make uninstall-all    Additionally remove udev rules and Vulkan layer
 
-Variables: IGNITION_VERSION PSVR2TK_VERSION SVLF_VERSION PLAYAREA_VERSION (default: latest),
-IGNITION_DIR STEAM_DIR PLUGIN_DIR PLAYAREA_DIR PROTON_VERSION SUDO
+Variables: IGNITION_VERSION PSVR2TK_VERSION SVLF_VERSION PLAYAREA_VERSION VR2JB_VERSION
+UPDATER_VERSION (default: latest), IGNITION_DIR STEAM_DIR PLUGIN_DIR PLAYAREA_DIR VR2JB_DIR
+UPDATER_DIR PROTON_VERSION SUDO
 Example:   make install IGNITION_VERSION=v1.1.0
 endef
 export HELP
 
 .PHONY: help check versions install reapply status \
         xr-hardware linux-fixes ignition driver psvr2tk register steamvr-settings unblock-driver \
-        playarea playarea-install \
+        playarea playarea-install vr2jb-install updater-install \
+        firmware firmware-recovery firmware-flash jailbreak \
         uninstall uninstall-all unregister uninstall-psvr2tk uninstall-driver \
-        uninstall-ignition uninstall-playarea uninstall-xr-hardware uninstall-linux-fixes
+        uninstall-ignition uninstall-playarea uninstall-jailbreak uninstall-xr-hardware uninstall-linux-fixes
 
 help:
 	@printf '%s\n' "$$HELP"
@@ -120,11 +133,13 @@ check:
 
 versions:
 	@$(LIB)
-	show() { local rel; rel=$$(resolve_release "$$1" "$$2" "$$3" "$${4:-no}"); printf '%-25s %s\n' "$$1" "$$(jq -r .tag_name <<<"$$rel")"; }
+	show() { local rel; rel=$$(resolve_release "$$1" "$$2" "$$3" "$${4:-no}"); printf '%-25s %s\n' "$${1##*/}" "$$(jq -r .tag_name <<<"$$rel")"; }
 	show Ignition          "$(IGNITION_VERSION)" Ignition-Linux-Windows.zip
 	show PSVR2Toolkit      "$(PSVR2TK_VERSION)"  PSVR2TK-win64-Ignition.zip yes
 	show SteamVRLinuxFixes "$(SVLF_VERSION)"     VK_LAYER_BNUUY_steamvr_linux_fixes.zip
-	show PSVR2Toolkit.UnitySetup "$(PLAYAREA_VERSION)" PSVR2Toolkit.UnitySetup-Linux.zip
+	show PSVR2Toolkit.UnitySetup "$(PLAYAREA_VERSION)" '$(PLAYAREA_ZIP)'
+	show vr2jb             "$(VR2JB_VERSION)"    '$(VR2JB_ZIP)'
+	show RealSupremium/PSVR2Updater "$(UPDATER_VERSION)" '$(UPDATER_ZIP)'
 
 # --- Installation -------------------------------------------------------------------
 
@@ -150,16 +165,16 @@ xr-hardware:
 linux-fixes:
 	@$(LIB)
 	step "SteamVRLinuxFixes"
-	fetch_release SteamVRLinuxFixes "$(SVLF_VERSION)" VK_LAYER_BNUUY_steamvr_linux_fixes.zip "$$tmp" >/dev/null
-	unzip -q "$$tmp/VK_LAYER_BNUUY_steamvr_linux_fixes.zip" -d "$$tmp/svlf"
+	fetch_release SteamVRLinuxFixes "$(SVLF_VERSION)" VK_LAYER_BNUUY_steamvr_linux_fixes.zip "$$tmp/svlf.zip" >/dev/null
+	unzip -q "$$tmp/svlf.zip" -d "$$tmp/svlf"
 	$(SUDO) "$$tmp/svlf/install.sh"
 
 ignition:
 	@$(LIB)
 	step "Ignition to $(IGNITION_DIR)"
 	case "$(IGNITION_DIR)" in ""|/|/opt|/usr|"$(HOME)") die "IGNITION_DIR='$(IGNITION_DIR)' is not allowed";; esac
-	tag=$$(fetch_release Ignition "$(IGNITION_VERSION)" Ignition-Linux-Windows.zip "$$tmp")
-	unzip -q "$$tmp/Ignition-Linux-Windows.zip" -d "$$tmp/ignition"
+	tag=$$(fetch_release Ignition "$(IGNITION_VERSION)" Ignition-Linux-Windows.zip "$$tmp/ignition.zip")
+	unzip -q "$$tmp/ignition.zip" -d "$$tmp/ignition"
 	echo "$$tag" > "$$tmp/ignition/VERSION"
 	chmod 0755 "$$tmp/ignition"/*.sh "$$tmp/ignition/proton"
 	chmod 0644 "$$tmp/ignition/VERSION" "$$tmp/ignition/wine_hidraw.reg"
@@ -195,8 +210,8 @@ register:
 psvr2tk:
 	@$(LIB)
 	step "PSVR2Toolkit to bin/win64"
-	tag=$$(fetch_release PSVR2Toolkit "$(PSVR2TK_VERSION)" PSVR2TK-win64-Ignition.zip "$$tmp" yes)
-	unzip -q "$$tmp/PSVR2TK-win64-Ignition.zip" -d "$$tmp/tk"
+	tag=$$(fetch_release PSVR2Toolkit "$(PSVR2TK_VERSION)" PSVR2TK-win64-Ignition.zip "$$tmp/tk.zip" yes)
+	unzip -q "$$tmp/tk.zip" -d "$$tmp/tk"
 	cd "$(WIN64)" 2>/dev/null || die "$(WIN64) missing – is the PlayStation VR2 App installed?"
 	dll=driver_playstation_vr2.dll orig=driver_playstation_vr2_orig.dll
 	[ -f "$$dll" ] || die "$$dll missing – let Steam verify the PlayStation VR2 App's files"
@@ -231,30 +246,67 @@ playarea: playarea-install
 	cd "$(PLAYAREA_DIR)"
 	./$(PLAYAREA_BIN) > run.log 2>&1
 
-# Installs or updates the tool; keeps the installed version if GitHub is unreachable
 playarea-install:
-	@$(LIB)
-	case "$(PLAYAREA_DIR)" in ""|/|"$(HOME)"|"$(HOME)/.local"|"$(HOME)/.local/share") die "PLAYAREA_DIR='$(PLAYAREA_DIR)' is not allowed";; esac
-	installed=$$(cat "$(PLAYAREA_DIR)/VERSION" 2>/dev/null || true)
-	wanted=$$(resolve_release PSVR2Toolkit.UnitySetup "$(PLAYAREA_VERSION)" $(PLAYAREA_ZIP) 2>/dev/null | jq -r .tag_name) || wanted=
-	if [ -z "$$wanted" ]; then
-	  [ -n "$$installed" ] || die "Could not resolve PSVR2Toolkit.UnitySetup '$(PLAYAREA_VERSION)' on GitHub"
-	  warn "Could not resolve PSVR2Toolkit.UnitySetup '$(PLAYAREA_VERSION)' on GitHub (offline?) – using installed $$installed"
-	  exit 0
-	fi
-	if [ "$$installed" = "$$wanted" ] && [ -x "$(PLAYAREA_DIR)/$(PLAYAREA_BIN)" ]; then
-	  ok "PSVR2Toolkit.UnitySetup $$installed is up to date"
-	  exit 0
-	fi
-	step "PSVR2Toolkit.UnitySetup $$wanted to $(PLAYAREA_DIR)"
-	fetch_release PSVR2Toolkit.UnitySetup "$$wanted" $(PLAYAREA_ZIP) "$$tmp" >/dev/null
-	unzip -q "$$tmp/$(PLAYAREA_ZIP)" -d "$$tmp/app"
-	chmod +x "$$tmp/app/$(PLAYAREA_BIN)"
-	echo "$$wanted" > "$$tmp/app/VERSION"
-	rm -rf "$(PLAYAREA_DIR)"
-	mkdir -p "$$(dirname "$(PLAYAREA_DIR)")"
-	mv "$$tmp/app" "$(PLAYAREA_DIR)"
-	ok "PSVR2Toolkit.UnitySetup $$wanted installed"
+	@. "$(CURDIR)/lib.sh"
+	install_tool PSVR2Toolkit.UnitySetup "$(PLAYAREA_VERSION)" '$(PLAYAREA_ZIP)' "$(PLAYAREA_DIR)" $(PLAYAREA_BIN)
+
+# --- Jailbreak and firmware (vr2jb, PSVR2Updater) – optional ---------------------------
+# The jailbreak unlocks headset vibration and the eye tracking camera feed. It only works
+# on firmware 6.00 and is not persistent: run it after every headset power-on, before
+# SteamVR. See https://github.com/BnuuySolutions/PSVR2Toolkit/wiki/Jailbreaking-your-headset
+
+VR2JB_ZIP   := vr2jb-windows-linux-builds.*\.zip
+UPDATER_ZIP := build-release-ubuntu-latest\.zip
+
+vr2jb-install:
+	@. "$(CURDIR)/lib.sh"
+	install_tool vr2jb "$(VR2JB_VERSION)" '$(VR2JB_ZIP)' "$(VR2JB_DIR)" vr2jb
+
+updater-install:
+	@. "$(CURDIR)/lib.sh"
+	install_tool RealSupremium/PSVR2Updater "$(UPDATER_VERSION)" '$(UPDATER_ZIP)' "$(UPDATER_DIR)" PSVR2Updater
+
+firmware: updater-install
+	@. "$(CURDIR)/lib.sh"
+	step "Headset firmware"
+	require_headset_idle
+	out=$$("$(UPDATER_DIR)/PSVR2Updater" 2>&1) || { printf '%s\n' "$$out"; die "PSVR2Updater failed"; }
+	firmware_report "$$out"
+
+# Puts the headset into recovery mode so that an older firmware can be flashed
+firmware-recovery: vr2jb-install
+	@. "$(CURDIR)/lib.sh"
+	step "Enter recovery mode (for downgrading)"
+	require_headset_idle
+	danger_banner "put the headset into recovery mode (vr2jb downgrade)"
+	echo "vr2jb first prints its instructions. Read them before pressing the power button –"
+	echo "the headset has to be unplugged right after each crash, and the timing matters."
+	echo
+	cd "$(VR2JB_DIR)"
+	./vr2jb downgrade
+	echo "Then flash firmware 6.00:"
+	echo "  make firmware-flash FIRMWARE=/path/to/HMD2_FIRMWARE_V06_00.CUP"
+
+firmware-flash: updater-install
+	@. "$(CURDIR)/lib.sh"
+	step "Flash firmware"
+	[ -n "$(FIRMWARE)" ] || die "Usage: make firmware-flash FIRMWARE=/path/to/firmware.CUP"
+	[ -f "$(FIRMWARE)" ] || die "$(FIRMWARE) not found"
+	require_headset_idle
+	danger_banner "flash $(notdir $(FIRMWARE)) to the headset"
+	echo "PSVR2Updater shows the file's firmware version and asks once more."
+	"$(UPDATER_DIR)/PSVR2Updater" "$(abspath $(FIRMWARE))"
+
+# vr2jb uploads busybox, patcher and vr2bridge from its own directory
+jailbreak: vr2jb-install
+	@. "$(CURDIR)/lib.sh"
+	step "Jailbreak"
+	require_headset_idle
+	danger_banner "jailbreak the headset (vr2jb)"
+	cd "$(VR2JB_DIR)"
+	./vr2jb
+	echo "Check that the output above reports success, then start SteamVR."
+	echo "The jailbreak is lost when the headset powers off – run 'make jailbreak' again then."
 
 # Remove SteamVR's "disabled"/"blocked by safe mode" flags for the PSVR2 driver
 unblock-driver:
@@ -300,6 +352,10 @@ status:
 	[ -f "$(VRSETTINGS)" ] && ok "SteamVR has been started before" || warn "SteamVR has never been started"
 	if [ -f "$(PLAYAREA_DIR)/VERSION" ]; then ok "PSVR2Toolkit.UnitySetup $$(cat "$(PLAYAREA_DIR)/VERSION") (make playarea)"
 	else warn "PSVR2Toolkit.UnitySetup not installed – run make playarea to set up the play area"; fi
+	for t in "$(VR2JB_DIR)|vr2jb" "$(UPDATER_DIR)|PSVR2Updater"; do
+	  [ -f "$${t%%|*}/VERSION" ] && ok "$${t#*|} $$(cat "$${t%%|*}/VERSION") (optional)"
+	done
+	true
 	step "Headset"
 	check_headset_usb
 	check_headset_display
@@ -309,7 +365,8 @@ status:
 
 # --- Uninstall -------------------------------------------------------------------------
 
-uninstall: unregister uninstall-psvr2tk uninstall-driver uninstall-ignition uninstall-playarea
+uninstall: unregister uninstall-psvr2tk uninstall-driver uninstall-ignition uninstall-playarea \
+           uninstall-jailbreak
 
 uninstall-all: uninstall uninstall-xr-hardware uninstall-linux-fixes
 
@@ -359,6 +416,13 @@ uninstall-playarea:
 	[ -f "$(PLAYAREA_DIR)/$(PLAYAREA_BIN)" ] || { warn "not present"; exit 0; }
 	rm -rf "$(PLAYAREA_DIR)"
 	ok "removed (your saved play area is kept in SteamVR's config)"
+
+uninstall-jailbreak:
+	@. "$(CURDIR)/lib.sh"
+	step "Remove vr2jb and PSVR2Updater"
+	for d in "$(VR2JB_DIR)" "$(UPDATER_DIR)"; do
+	  [ -f "$$d/VERSION" ] && rm -rf "$$d" && ok "$$d removed" || true
+	done
 
 uninstall-xr-hardware:
 	@. "$(CURDIR)/lib.sh"

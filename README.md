@@ -24,8 +24,9 @@ sha256 digest published by GitHub and deleted afterwards. This repository contai
 - A GPU with a free **DisplayPort** output
 - A free **USB 3 port** – ideally a rear port directly on the mainboard. Hubs, extension cables
   and front-panel ports often make the headset connect at USB 2 speed and drop out.
-- Headset firmware 5.00 or newer. The official PlayStation VR2 App cannot update it on Linux; use
-  [PSVR2Updater](https://github.com/RealSupremium/PSVR2Updater).
+- Headset firmware 5.00 or newer. The official PlayStation VR2 App cannot update it on Linux;
+  `make firmware` shows the version and `make firmware-flash` updates it (see the
+  [jailbreak section](#optional-jailbreak-vr2jb) for the warnings).
 
 **Software**
 - Steam, the native package – **not** the Flatpak
@@ -96,6 +97,79 @@ the cameras:
 The tool also calibrates eye tracking and helps with lens adjustment. If tracking gets worse
 later, use *Refine map* or *Clear SLAM map* – both keep the drawn play area.
 
+## Optional: Jailbreak (vr2jb)
+
+> [!CAUTION]
+> **Jailbreaking or flashing firmware can brick your headset.** Both are unofficial.
+> Neither this installer nor the authors of [vr2jb](https://github.com/BnuuySolutions/vr2jb)
+> and [PSVR2Updater](https://github.com/RealSupremium/PSVR2Updater) take any responsibility.
+> Read the [jailbreak guide](https://github.com/BnuuySolutions/PSVR2Toolkit/wiki/Jailbreaking-your-headset)
+> in full before you start. Everything above works **without** a jailbreak.
+
+The jailbreak unlocks **headset vibration** and the **raw eye tracking camera images**. You do
+not need it for eye tracking as such: gaze direction and per-eye openness (blinking) are provided
+by Sony's driver and work without a jailbreak – that is what PSVR2Toolkit.UnitySetup and the
+[VRCFaceTracking module](https://github.com/BnuuySolutions/PSVR2Toolkit.VRCFT) use. The camera
+images are only needed by software that analyses them itself, such as
+[Baballonia](https://github.com/Project-Babble/Baballonia) with the
+[PSVR2Toolkit.Baballonia](https://github.com/BnuuySolutions/PSVR2Toolkit.Baballonia) module
+(finer eye expressions in VRChat, Resonite and ChilloutVR).
+
+The jailbreak has three limits:
+
+- It only works on **firmware 6.00**.
+- It is **not persistent**: after every headset power-off (red LED) you have to run it again,
+  before starting SteamVR.
+- Using the headset on a PS5 updates the firmware. A newer firmware can make downgrading
+  impossible, so avoid firmware updates if you want to keep the jailbreak.
+
+The targets below download vr2jb and PSVR2Updater to `~/.local/share` (verified against GitHub's
+sha256). Before anything that writes to the headset they show a red warning banner and ask for
+confirmation, on every run. SteamVR must be closed and the headset connected.
+
+### 1. Check the firmware
+
+```bash
+make firmware
+```
+
+Reads the firmware and recovery version (nothing is written) and tells you what to do next:
+
+| Result | Next step |
+|--------|-----------|
+| Firmware 6.00 | Go to step 3. |
+| Older than 6.00 | Update to 6.00 (step 2, flash only). |
+| Newer than 6.00 | Downgrade: enter recovery mode, then flash 6.00 (step 2). |
+| Recovery version 6.10 or newer | Downgrading is impossible – no jailbreak on this headset. |
+
+### 2. Downgrade or update to 6.00
+
+Get the firmware 6.00 file `HMD2_FIRMWARE_V06_00.CUP` via the link in the
+[jailbreak guide](https://github.com/BnuuySolutions/PSVR2Toolkit/wiki/Jailbreaking-your-headset#prerequisites).
+This installer does not download it: there is no published checksum to verify it against, and a
+wrong file can brick the headset.
+
+```bash
+make firmware-recovery    # only when downgrading: enter recovery mode (see below)
+make firmware-flash FIRMWARE=~/Downloads/HMD2_FIRMWARE_V06_00.CUP
+make firmware             # should now report firmware 6.00
+```
+
+`make firmware-recovery` crashes the headset repeatedly until it falls back to recovery mode.
+vr2jb prints its instructions first – follow them exactly: after each crash you unplug the
+headset, plug it back in and press the power button. This can take 15 or more rounds.
+
+Do not disconnect the headset or turn off the PC while flashing. PSVR2Updater shows the file's
+firmware version and asks once more before it writes anything.
+
+### 3. Jailbreak – after every headset power-on
+
+```bash
+make jailbreak
+```
+
+Check that the output reports success, then start SteamVR.
+
 ## Checking your setup
 
 ```bash
@@ -150,7 +224,8 @@ make uninstall       # unregister driver, remove toolkit + shim + /opt/ignition 
 make uninstall-all   # additionally remove the udev rules and the Vulkan layer
 ```
 
-The Proton prefix used by Ignition (`~/.proton`) and your saved play area are left in place.
+`make uninstall` also removes vr2jb and PSVR2Updater from `~/.local/share`. It does not change
+the headset's firmware. The Proton prefix used by Ignition (`~/.proton`) and your saved play area are left in place.
 
 ## Differences from the upstream guide
 
@@ -171,11 +246,13 @@ All variables can be overridden on the command line:
 | `STEAM_DIR` | `~/.steam/steam`, or `~/.local/share/Steam` |
 | `PLUGIN_DIR` | `$STEAM_DIR/steamapps/common/PlayStation VR2 App/SteamVR_Plug-In` |
 | `PLAYAREA_DIR` | `~/.local/share/PSVR2Toolkit.UnitySetup` |
+| `VR2JB_VERSION`, `UPDATER_VERSION` | `latest` |
+| `VR2JB_DIR`, `UPDATER_DIR` | `~/.local/share/vr2jb`, `~/.local/share/PSVR2Updater` |
 | `PROTON_VERSION` | `Proton - Experimental` |
 | `SUDO` | `sudo` |
 
 ## License
 
 [MIT](LICENSE). This repository only contains the installer; Ignition, PSVR2Toolkit,
-PSVR2Toolkit.UnitySetup, SteamVRLinuxFixes and xr-hardware are downloaded from their projects and are covered by
+PSVR2Toolkit.UnitySetup, vr2jb, PSVR2Updater, SteamVRLinuxFixes and xr-hardware are downloaded from their projects and are covered by
 their own licenses.
