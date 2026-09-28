@@ -94,6 +94,18 @@ the cameras:
 2. **Draw the play area** on the floor with the controllers (add, subtract, move points).
 3. **Save** – the button is only enabled once tracking works.
 
+To start it from inside VR instead, register it with SteamVR once (SteamVR closed):
+
+```bash
+make playarea-register
+```
+
+It then shows up as *PSVR2 Play Area Setup* in SteamVR's app library, next to your non-Steam
+apps. Updates via `make playarea` keep the registration; `make uninstall` removes it.
+
+SteamVR's own *Room Setup* menu entry still opens Valve's tool – SteamVR offers no way to replace
+it. Use *PSVR2 Play Area Setup* instead; Valve's room setup does not apply to the PSVR2.
+
 The tool also calibrates eye tracking and helps with lens adjustment. If tracking gets worse
 later, use *Refine map* or *Clear SLAM map* – both keep the drawn play area.
 

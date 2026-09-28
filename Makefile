@@ -65,6 +65,7 @@ PSVR2 Linux Companion – Ignition + PSVR2Toolkit for PlayStation VR2 on Linux
                         driver psvr2tk register
   make status           Show installation state, headset connection and last SteamVR run
   make playarea         Set up play area, eye tracking, lenses (PSVR2Toolkit.UnitySetup)
+  make playarea-register  Add the play area setup to SteamVR's app list (SteamVR closed)
   make reapply          After Steam updated the PlayStation VR2 App: driver + psvr2tk again
   make steamvr-settings Set recommended options in steamvr.vrsettings
   make unblock-driver   Re-enable the PSVR2 driver if SteamVR disabled it after a crash
@@ -96,7 +97,7 @@ export HELP
 
 .PHONY: help check versions install reapply status \
         xr-hardware linux-fixes ignition driver psvr2tk register steamvr-settings unblock-driver \
-        playarea playarea-install vr2jb-install updater-install \
+        playarea playarea-install playarea-register vr2jb-install updater-install \
         firmware firmware-recovery firmware-flash jailbreak \
         uninstall uninstall-all unregister uninstall-psvr2tk uninstall-driver \
         uninstall-ignition uninstall-playarea uninstall-jailbreak uninstall-xr-hardware uninstall-linux-fixes
@@ -235,6 +236,9 @@ psvr2tk:
 
 PLAYAREA_ZIP := PSVR2Toolkit.UnitySetup-Linux.zip
 PLAYAREA_BIN := PSVR2Toolkit.UnitySetup.x86_64
+# Next to the install dir, so that tool updates (which replace the dir) keep it
+PLAYAREA_MANIFEST := $(PLAYAREA_DIR).vrmanifest
+APPCONFIG := $(STEAM_DIR)/config/appconfig.json
 
 playarea: playarea-install
 	@. "$(CURDIR)/lib.sh"
@@ -249,6 +253,31 @@ playarea: playarea-install
 playarea-install:
 	@. "$(CURDIR)/lib.sh"
 	install_tool PSVR2Toolkit.UnitySetup "$(PLAYAREA_VERSION)" '$(PLAYAREA_ZIP)' "$(PLAYAREA_DIR)" $(PLAYAREA_BIN)
+
+# Adds the tool to SteamVR's app list via an app manifest in appconfig.json
+playarea-register: playarea-install
+	@. "$(CURDIR)/lib.sh"
+	step "Register play area setup with SteamVR"
+	pgrep -x vrserver >/dev/null && die "SteamVR is running – close it first (it overwrites appconfig.json on exit)"
+	[ -f "$(APPCONFIG)" ] || die "$(APPCONFIG) missing – start SteamVR once"
+	jq -n --arg bin "$(PLAYAREA_DIR)/$(PLAYAREA_BIN)" \
+	  --arg actions "$(PLAYAREA_DIR)/PSVR2Toolkit.UnitySetup_Data/StreamingAssets/SteamVR/actions.json" '{
+	    source: "user",
+	    applications: [{
+	      app_key: "psvr2toolkit.unitysetup",
+	      launch_type: "binary",
+	      binary_path_linux: $$bin,
+	      action_manifest_path: $$actions,
+	      strings: { en_us: {
+	        name: "PSVR2 Play Area Setup",
+	        description: "Play area, eye tracking calibration and lens adjustment for PlayStation VR2"
+	      } }
+	    }]
+	  }' > "$(PLAYAREA_MANIFEST)"
+	cp "$(APPCONFIG)" "$(APPCONFIG).bak"
+	jq --indent 3 --arg m "$(PLAYAREA_MANIFEST)" '.manifest_paths = ((.manifest_paths // []) + [$$m] | unique)' \
+	  "$(APPCONFIG).bak" > "$(APPCONFIG)"
+	ok "Registered – SteamVR lists it as 'PSVR2 Play Area Setup' (backup: $(APPCONFIG).bak)"
 
 # --- Jailbreak and firmware (vr2jb, PSVR2Updater) – optional ---------------------------
 # The jailbreak unlocks headset vibration and the eye tracking camera feed. It only works
@@ -352,6 +381,9 @@ status:
 	[ -f "$(VRSETTINGS)" ] && ok "SteamVR has been started before" || warn "SteamVR has never been started"
 	if [ -f "$(PLAYAREA_DIR)/VERSION" ]; then ok "PSVR2Toolkit.UnitySetup $$(cat "$(PLAYAREA_DIR)/VERSION") (make playarea)"
 	else warn "PSVR2Toolkit.UnitySetup not installed – run make playarea to set up the play area"; fi
+	if [ -f "$(APPCONFIG)" ] && jq -e --arg m "$(PLAYAREA_MANIFEST)" '.manifest_paths // [] | index($$m)' "$(APPCONFIG)" >/dev/null; then
+	  ok "Play area setup registered with SteamVR"
+	fi
 	for t in "$(VR2JB_DIR)|vr2jb" "$(UPDATER_DIR)|PSVR2Updater"; do
 	  [ -f "$${t%%|*}/VERSION" ] && ok "$${t#*|} $$(cat "$${t%%|*}/VERSION") (optional)"
 	done
@@ -413,6 +445,13 @@ uninstall-ignition:
 uninstall-playarea:
 	@. "$(CURDIR)/lib.sh"
 	step "Remove $(PLAYAREA_DIR)"
+	if [ -f "$(APPCONFIG)" ] && jq -e --arg m "$(PLAYAREA_MANIFEST)" '.manifest_paths // [] | index($$m)' "$(APPCONFIG)" >/dev/null; then
+	  pgrep -x vrserver >/dev/null && die "SteamVR is running – close it first to unregister the play area setup"
+	  cp "$(APPCONFIG)" "$(APPCONFIG).bak"
+	  jq --indent 3 --arg m "$(PLAYAREA_MANIFEST)" '.manifest_paths -= [$$m]' "$(APPCONFIG).bak" > "$(APPCONFIG)"
+	  ok "Unregistered from SteamVR"
+	fi
+	rm -f "$(PLAYAREA_MANIFEST)"
 	[ -f "$(PLAYAREA_DIR)/$(PLAYAREA_BIN)" ] || { warn "not present"; exit 0; }
 	rm -rf "$(PLAYAREA_DIR)"
 	ok "removed (your saved play area is kept in SteamVR's config)"
